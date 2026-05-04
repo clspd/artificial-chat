@@ -79,7 +79,7 @@ export default {
       return router.fetch(request, env)
     }
 
-    // Everything else: serve static assets (with SPA fallback)
+    // Serve static assets
     return env.ASSETS.fetch(request)
   },
 }

@@ -1,6 +1,6 @@
 name = "artificial-chat"
-main = "packages/worker/src/index.ts"
-compatibility_date = "2025-04-28"
+main = "packages/worker/dist/index.mjs"
+compatibility_date = "2026-05-04"
 
 [assets]
 binding = "ASSETS"
@@ -17,11 +17,7 @@ class_name = "ChatSession"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["ChatSession"]
-
-[vars]
-AUTH_CODE_JWT_SECRET = ""
-SESSION_JWT_SECRET = ""
+new_sqlite_classes = ["ChatSession"]
 
 [observability]
 enabled = true

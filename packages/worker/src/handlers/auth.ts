@@ -15,7 +15,7 @@ export async function handleWebLogin(request: IRequest, env: Env): Promise<Respo
     }
   }
 
-  return Response.redirect('/auth/login.html', 307)
+  return Response.redirect(new URL('/auth/login.html', request.url).href, 307)
 }
 
 export async function handleWebLoginByPassword(

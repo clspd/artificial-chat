@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "dev": "tsdown --watch",
+    "build": "pnpm type-check && pnpm build-only",
+    "build-only": "tsdown",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -10,6 +13,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250428.0",
+    "tsdown": "^0.21.10",
     "typescript": "~5.7.0"
   }
 }
