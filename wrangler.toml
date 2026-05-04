@@ -1,0 +1,36 @@
+name = "artificial-chat"
+main = "packages/worker/src/index.ts"
+compatibility_date = "2024-05-04"
+account_id = "YOUR_ACCOUNT_ID"
+workers_dev = true
+
+[env.production]
+routes = [
+  { pattern = "example.com/api/*", zone_name = "example.com" }
+]
+
+[build]
+command = "npm install && npm run build --prefix packages/worker"
+cwd = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "artificial-chat"
+database_id = "YOUR_DATABASE_ID"
+
+[[durable_objects.bindings]]
+name = "CHAT_SESSION"
+class_name = "ChatSession"
+
+[env.production.durable_objects.bindings]
+name = "CHAT_SESSION"
+class_name = "ChatSession"
+
+[vars]
+# 环境变量配置
+AUTH_CODE_JWT_SECRET = "your-auth-code-jwt-secret"
+SESSION_JWT_SECRET = "your-session-jwt-secret"
+Password_SALT_PREFIX = "your-password-salt-prefix"
+
+[triggers]
+crons = []
