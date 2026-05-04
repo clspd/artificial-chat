@@ -6,34 +6,24 @@
       role="log"
       aria-label="聊天消息"
       aria-live="polite"
-      aria-atomic="false"
     >
       <article
         v-for="message in messages"
         :key="message.id"
-        :class="['message', message.role.toLowerCase()]"
+        :class="['message', message.role === 'USER' ? 'user' : 'assistant']"
       >
         <div class="message-avatar" role="img" :aria-label="`${message.role}消息`">
-          <span>
-            {{ message.role === MessageRole.User ? '👤' : '🤖' }}
-          </span>
+          <span>{{ message.role === 'USER' ? '👤' : '🤖' }}</span>
         </div>
         <div class="message-content">
           <div
             v-for="fragment in message.fragments"
             :key="fragment.id"
             class="fragment"
-            role="textbox"
-            :aria-readonly="true"
           >
             {{ fragment.content }}
           </div>
-          <div
-            v-if="message.has_pending_fragment"
-            class="pending-indicator"
-            role="status"
-            aria-live="polite"
-          >
+          <div v-if="message.has_pending_fragment" class="pending-indicator" role="status">
             ⌛ 生成中...
           </div>
         </div>
@@ -45,7 +35,7 @@
         <textarea
           v-model="inputMessage"
           class="message-input"
-          :placeholder="$t('chat.sendMessage')"
+          :placeholder="t('chat.sendMessage')"
           rows="3"
           @keydown.enter.ctrl="sendMessage"
           @keydown.enter.meta="sendMessage"
@@ -62,7 +52,7 @@
           type="button"
         >
           <span v-if="!isLoading">发送</span>
-          <span v-else aria-live="polite">{{ $t('chat.loading') }}</span>
+          <span v-else aria-live="polite">{{ t('chat.loading') }}</span>
         </button>
       </div>
     </div>
@@ -71,9 +61,9 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import { useI18n } from 'i18next-vue'
-import type { Conversation, Message, WebSocketMessage } from '@/types'
-import { MessageRole, MessageStatus, MessageFragmentType, MessageContentType, SchemaVersion } from '@/types'
+import { useTranslation } from 'i18next-vue'
+import type { Message, WebSocketMessage, MessageFragment, PatchOperation } from '@/types'
+import { MessageRole, MessageStatus, MessageFragmentType, MessageContentType } from '@/types'
 import { chatWebSocketManager } from '@/lib/websocket'
 
 interface Props {
@@ -81,11 +71,8 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits<{
-  'send-message': [content: string]
-}>()
 
-const { t } = useI18n()
+const { t } = useTranslation()
 
 const messages = ref<Message[]>([])
 const inputMessage = ref('')
@@ -94,9 +81,6 @@ const messagesContainer = ref<HTMLElement>()
 const currentChatId = ref<string>('')
 const unsubscribe = ref<(() => void) | null>(null)
 
-/**
- * 滚动到底部
- */
 async function scrollToBottom() {
   await nextTick()
   if (messagesContainer.value) {
@@ -104,9 +88,6 @@ async function scrollToBottom() {
   }
 }
 
-/**
- * 发送消息
- */
 async function sendMessage() {
   if (!inputMessage.value.trim() || isLoading.value || !currentChatId.value) return
 
@@ -115,13 +96,12 @@ async function sendMessage() {
   isLoading.value = true
 
   try {
-    // 创建用户消息
     const userMessage: Message = {
       id: messages.value.length + 1,
       parent_id: null,
       role: MessageRole.User,
       ts: Date.now(),
-      status: 'FINISHED' as any,
+      status: MessageStatus.Finished,
       files: [],
       fragments: [
         {
@@ -129,19 +109,14 @@ async function sendMessage() {
           type: MessageFragmentType.TextFragment,
           ts: Date.now(),
           contentType: MessageContentType.Text,
-          content: content,
+          content,
         },
       ],
       has_pending_fragment: false,
     }
     messages.value.push(userMessage)
     await scrollToBottom()
-
-    // 通过WebSocket发送消息
     chatWebSocketManager.sendMessage('send', userMessage)
-
-    // 发送事件给父组件
-    emit('send-message', content)
   } catch (error) {
     console.error('Failed to send message:', error)
   } finally {
@@ -149,110 +124,79 @@ async function sendMessage() {
   }
 }
 
-/**
- * 处理WebSocket消息
- */
 function handleWebSocketMessage(message: WebSocketMessage) {
   switch (message.type) {
-    case 'history_messages':
-      // 处理历史消息
-      const conversation = message.content as Conversation
-      if (conversation.content.content) {
+    case 'history_messages': {
+      const conversation = message.content as { content: { content: Message[] } }
+      if (conversation?.content?.content) {
         messages.value = conversation.content.content
       }
       scrollToBottom()
       break
-
+    }
     case 'patch':
-      // 处理patch操作
-      handlePatch(message.content)
+      handlePatch(message.content as PatchOperation)
       break
-
     default:
       console.warn('Unknown message type:', message.type)
   }
 }
 
-/**
- * 处理patch操作
- */
-function handlePatch(patch: any) {
+function handlePatch(patch: PatchOperation) {
   const { p, o, v } = patch
   const path = String(p).split('/')
 
   if (path[0] === 'content' && path[1] === 'content') {
     if (o === 'PUSH') {
-      // 添加新消息
       messages.value.push(v as Message)
     } else if (o === 'APPEND') {
-      // 追加内容到fragment
       const messageIndex = parseInt(path[2])
       const fragmentIndex = parseInt(path[3])
-
-      if (messages.value[messageIndex] && messages.value[messageIndex].fragments[fragmentIndex]) {
-        const fragment = messages.value[messageIndex].fragments[fragmentIndex]
-        fragment.content += v as string
+      const msg = messages.value[messageIndex]
+      if (msg?.fragments[fragmentIndex]) {
+        msg.fragments[fragmentIndex].content += v as string
+        // trigger reactivity
+        messages.value[messageIndex] = { ...msg }
       }
     } else if (o === 'UPDATE') {
-      // 更新消息
       const messageIndex = parseInt(path[2])
       if (messages.value[messageIndex]) {
-        Object.assign(messages.value[messageIndex], v)
+        const updated = { ...messages.value[messageIndex], ...(v as Partial<Message>) }
+        messages.value[messageIndex] = updated
       }
     }
-
     scrollToBottom()
   }
 }
 
-/**
- * 连接到聊天
- */
 async function connectToChat(chatId: string) {
-  if (currentChatId.value === chatId && chatWebSocketManager.isConnected()) {
-    return
-  }
+  if (currentChatId.value === chatId && chatWebSocketManager.isConnected()) return
 
   currentChatId.value = chatId
 
   try {
-    await chatWebSocketManager.connecting(chatId)
-
-    // 订阅WebSocket消息
-    if (unsubscribe.value) {
-      unsubscribe.value()
-    }
+    await chatWebSocketManager.connect(chatId)
+    if (unsubscribe.value) unsubscribe.value()
     unsubscribe.value = chatWebSocketManager.on('*', handleWebSocketMessage)
   } catch (error) {
     console.error('Failed to connect to chat:', error)
   }
 }
 
-/**
- * 监听props变化
- */
 watch(
   () => props.chat?.id,
   (chatId) => {
-    if (chatId) {
-      connectToChat(chatId)
-    }
+    if (chatId) connectToChat(chatId)
   },
 )
 
-// 组件挂载时
 onMounted(() => {
-  if (props.chat?.id) {
-    connectToChat(props.chat.id)
-  }
+  if (props.chat?.id) connectToChat(props.chat.id)
 })
 
-// 组件卸载时
 onUnmounted(() => {
   chatWebSocketManager.disconnect()
-  if (unsubscribe.value) {
-    unsubscribe.value()
-  }
+  if (unsubscribe.value) unsubscribe.value()
 })
 </script>
 
@@ -278,7 +222,6 @@ onUnmounted(() => {
 
       &.user {
         flex-direction: row-reverse;
-
         .message-content {
           background: #1890ff;
           color: white;
@@ -288,7 +231,6 @@ onUnmounted(() => {
 
       &.assistant {
         flex-direction: row;
-
         .message-content {
           background: #f5f5f5;
           color: #333;
@@ -343,13 +285,11 @@ onUnmounted(() => {
         resize: none;
         font-size: 14px;
         font-family: inherit;
-
         &:focus {
           outline: none;
           border-color: #1890ff;
           box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
         }
-
         &:disabled {
           background: #f5f5f5;
           cursor: not-allowed;
@@ -366,11 +306,9 @@ onUnmounted(() => {
         font-size: 14px;
         font-weight: 500;
         transition: background 0.3s;
-
         &:hover:not(:disabled) {
           background: #40a9ff;
         }
-
         &:disabled {
           background: #bfbfbf;
           cursor: not-allowed;
@@ -385,7 +323,6 @@ onUnmounted(() => {
     opacity: 0;
     transform: translateY(10px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);

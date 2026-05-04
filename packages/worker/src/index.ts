@@ -1,132 +1,85 @@
-import { Router } from 'itty-router'
-import type { Request, Response } from 'itty-router'
+import { AutoRouter, IRequest } from 'itty-router'
 import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb } from './handlers/auth'
-import {
-  handleGetChatSessions,
-  handleCreateChat,
-  handleGetChat,
-  handleUpdateChat,
-  handleDeleteChat,
-} from './handlers/chat'
+import { handleGetChatSessions, handleChat } from './handlers/chat'
+import { validateSession } from './services/user'
+import { ChatSession } from './durable-objects/chat-session'
 
-/**
- * 创建路由器
- */
-const router = Router()
+export { ChatSession }
 
-/**
- * 中间件：验证用户session
- */
-async function authMiddleware(request: Request, env: any) {
-  // 如果是登录或注册端点，跳过认证
-  if (
-    request.url.includes('/weblogin') ||
-    request.url.includes('/webLoginByPassword') ||
-    request.url.includes('/addUserWeb')
-  ) {
-    return
-  }
+interface Env {
+  DB: D1Database
+  ASSETS: { fetch: (request: Request) => Promise<Response> }
+  AUTH_CODE_JWT_SECRET: string
+  SESSION_JWT_SECRET: string
+  CHAT_SESSION: DurableObjectNamespace
+}
 
+async function authMiddleware(request: IRequest, env: Env) {
   const cookieHeader = request.headers.get('Cookie') || ''
   const cookies = parseCookies(cookieHeader)
-  const sessionSecret = cookies['SessionSecret']
+  const token = cookies.SessionSecret
 
-  if (!sessionSecret) {
-    throw new Error('Unauthorized')
+  if (!token) {
+    return new Response('Unauthorized', { status: 401 })
   }
 
-  // 验证session（实现在auth handler中）
-  // @ts-ignore
-  request.user = { sessionSecret }
+  const user = await validateSession(env.DB, token, env.SESSION_JWT_SECRET)
+  if (!user) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+
+  ;(request as any).username = user.username
 }
 
-/**
- * 解析Cookie
- */
-function parseCookies(cookieString: string): Record<string, string> {
-  const cookies: Record<string, string> = {}
-  if (!cookieString) return cookies
-
-  cookieString.split(';').forEach((cookie) => {
-    const [name, value] = cookie.trim().split('=')
-    if (name && value) {
-      cookies[name] = decodeURIComponent(value)
+function parseCookies(header: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const pair of header.split(';')) {
+    const idx = pair.indexOf('=')
+    if (idx > 0) {
+      result[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim()
     }
-  })
-
-  return cookies
+  }
+  return result
 }
 
-/**
- * 路由定义
- */
+const router = AutoRouter()
 
-// 登录相关
-router.get('/api/v1/user/weblogin', (request: Request, env: any) =>
-  handleWebLogin(request, env, env.DB),
-)
+// Auth routes
+router.get('/api/v1/user/weblogin', handleWebLogin)
+router.post('/api/v1/user/webLoginByPassword', handleWebLoginByPassword)
+router.post('/api/v1/user/addUserWeb', handleAddUserWeb)
 
-router.post('/api/v1/user/webLoginByPassword', (request: Request, env: any) =>
-  handleWebLoginByPassword(request, env, env.DB),
-)
+// Chat REST routes (auth required)
+router.get('/api/v1/chat/sessions', authMiddleware, handleGetChatSessions)
+router.post('/api/v1/chat/chat', authMiddleware, handleChat)
+router.get('/api/v1/chat/chat', authMiddleware, handleChat)
+router.patch('/api/v1/chat/chat', authMiddleware, handleChat)
+router.delete('/api/v1/chat/chat', authMiddleware, handleChat)
 
-router.post('/api/v1/user/addUserWeb', (request: Request, env: any) =>
-  handleAddUserWeb(request, env, env.DB),
-)
+// WebSocket
+router.get('/api/v1/chat/connect', authMiddleware, (request: IRequest, env: Env) => {
+  const username = (request as any).username as string
+  const chatId = (request.query as Record<string, string>).chat_id
+  if (!chatId) return new Response('Missing chat_id', { status: 400 })
 
-// 聊天相关
-router.get('/api/v1/chat/sessions', (request: Request, env: any) =>
-  handleGetChatSessions(request, env, { username: 'test' }),
-)
+  const doId = env.CHAT_SESSION.idFromName(`user:${username}`)
+  const stub = env.CHAT_SESSION.get(doId)
+  const url = new URL(request.url)
+  url.pathname = '/connect'
+  url.hostname = 'do'
+  return stub.fetch(url.toString(), { headers: request.headers })
+})
 
-router.post('/api/v1/chat/chat', (request: Request, env: any) =>
-  handleCreateChat(request, env, { username: 'test' }),
-)
-
-router.get('/api/v1/chat/chat', (request: Request, env: any) =>
-  handleGetChat(request, env, { username: 'test' }),
-)
-
-router.patch('/api/v1/chat/chat', (request: Request, env: any) =>
-  handleUpdateChat(request, env, { username: 'test' }),
-)
-
-router.delete('/api/v1/chat/chat', (request: Request, env: any) =>
-  handleDeleteChat(request, env, { username: 'test' }),
-)
-
-// 默认404处理
-router.all('*', () =>
-  new Response('Not found', {
-    status: 404,
-  }),
-)
-
-/**
- * 导出 Worker 处理程序
- */
 export default {
-  async fetch(request: Request, env: any, ctx: any): Promise<Response> {
-    try {
-      return await router.handle(request, env, ctx)
-    } catch (error: any) {
-      console.error('Worker error:', error)
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
 
-      if (error.message === 'Unauthorized') {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      }
-
-      return new Response(JSON.stringify({ error: 'Internal server error' }), {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
+    // API routes
+    if (url.pathname.startsWith('/api/')) {
+      return router.fetch(request, env)
     }
+
+    // Everything else: serve static assets (with SPA fallback)
+    return env.ASSETS.fetch(request)
   },
 }

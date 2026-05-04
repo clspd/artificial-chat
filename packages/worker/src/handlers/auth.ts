@@ -1,214 +1,114 @@
-import type { Request, Response } from 'itty-router'
-import type { D1Database } from '@cloudflare/workers-types'
-import { createUser, loginUser, validateSessionJWT, getUserByUsername } from './user'
-import { verifyAuthCodeJWT } from '../lib/jwt'
+import { IRequest } from 'itty-router'
+import { createUser, loginUser, validateSession, getUserByUsername } from '../services/user'
+import { verifyJWT } from '../lib/jwt'
 
-/**
- * 登录中间页处理（weblogin endpoint）
- * 验证SessionSecret cookie，如果有效则返回重定向页面
- */
-export async function handleWebLogin(request: Request, env: any, db: D1Database): Promise<Response> {
+export async function handleWebLogin(request: IRequest, env: Env): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie') || ''
   const cookies = parseCookies(cookieHeader)
-  const sessionSecret = cookies['SessionSecret']
+  const token = cookies.SessionSecret
 
-  if (!sessionSecret) {
-    // 没有session cookie，返回307到登录页
-    return new Response(null, {
-      status: 307,
-      headers: {
-        Location: '/auth/login.html',
-      },
-    })
+  if (token) {
+    const user = await validateSession(env.DB, token, env.SESSION_JWT_SECRET)
+    if (user) {
+      // Valid session - return redirect page that sets localStorage
+      return webloginRedirectResponse()
+    }
   }
 
-  // 验证session JWT
-  const validation = await validateSessionJWT(db, sessionSecret)
-  if (!validation.valid) {
-    // 验证失败，返回307到登录页
-    return new Response(null, {
-      status: 307,
-      headers: {
-        Location: '/auth/login.html',
-      },
-    })
+  return Response.redirect('/auth/login.html', 307)
+}
+
+export async function handleWebLoginByPassword(
+  request: IRequest,
+  env: Env,
+): Promise<Response> {
+  let body: { username?: string; password?: string; remember?: boolean }
+  try {
+    body = await request.json()
+  } catch {
+    return Response.json({ success: false, error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // 验证成功，返回重定向HTML页面
-  const nonce = generateNonce()
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Redirecting</title>
-</head>
-<body>
-  <script nonce="${nonce}">
-    localStorage.setItem('user::isLoggedIn','true');
-    location.href='/'
-  </script>
-</body>
-</html>`
+  const { username, password, remember = false } = body
+  if (!username || !password) {
+    return Response.json({ success: false, error: 'Missing fields' }, { status: 400 })
+  }
 
-  return new Response(html, {
+  const result = await loginUser(env.DB, username, password, remember, env.SESSION_JWT_SECRET)
+  if (!result) {
+    return Response.json({ success: false, error: '用户名或密码错误' }, { status: 401 })
+  }
+
+  const cookieAttrs = [
+    'HttpOnly',
+    'Secure',
+    'SameSite=Lax',
+    'Path=/',
+  ]
+  if (result.maxAge) {
+    cookieAttrs.push(`Max-Age=${result.maxAge}`)
+  }
+
+  return new Response(null, {
     status: 200,
     headers: {
-      'Content-Type': 'text/html;charset=utf-8',
-      'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'`,
+      'Set-Cookie': `SessionSecret=${result.token}; ${cookieAttrs.join('; ')}`,
     },
   })
 }
 
-/**
- * 处理登录请求 (POST /api/v1/user/webLoginByPassword)
- */
-export async function handleWebLoginByPassword(
-  request: Request,
-  env: any,
-  db: D1Database,
-): Promise<Response> {
+export async function handleAddUserWeb(request: IRequest, env: Env): Promise<Response> {
+  let body: { username?: string; password?: string; code?: string }
   try {
-    const body = await request.json<{ username: string; password: string; remember?: boolean }>()
-
-    const username = body.username?.trim()
-    const passwordHash = body.password?.trim()
-    const remember = body.remember ?? false
-
-    if (!username || !passwordHash) {
-      return new Response(JSON.stringify({ error: 'Missing username or password' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    // 验证用户登录
-    const result = await loginUser(db, username, passwordHash, remember)
-
-    if (!result.success || !result.sessionJWT) {
-      return new Response(JSON.stringify({ error: 'Invalid username or password' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    // 构建cookie头
-    const maxAge = remember ? 14 * 24 * 60 * 60 : undefined // 14天（秒）
-    const cookieValue = `SessionSecret=${result.sessionJWT}; HttpOnly; Secure; SameSite=Lax${
-      maxAge ? `; Max-Age=${maxAge}` : ''
-    }`
-
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Set-Cookie': cookieValue,
-      },
-    })
-  } catch (error) {
-    console.error('Login error:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    body = await request.json()
+  } catch {
+    return Response.json({ success: false, error: 'Invalid JSON' }, { status: 400 })
   }
+
+  const { username, password, code } = body
+  if (!username || !password || !code) {
+    return Response.json({ success: false, error: 'Missing fields' }, { status: 400 })
+  }
+
+  // Verify invite code
+  const valid = await verifyJWT(code, env.AUTH_CODE_JWT_SECRET)
+  if (!valid) {
+    return Response.json({ success: false, code: 403, error: 'Invalid auth code' }, { status: 403 })
+  }
+
+  // Check if user exists
+  const existing = await getUserByUsername(env.DB, username)
+  if (existing) {
+    return Response.json({ success: false, code: 409, error: 'User already exists' }, { status: 409 })
+  }
+
+  await createUser(env.DB, username, password)
+
+  return Response.json({ success: true }, { status: 201 })
 }
 
-/**
- * 处理注册请求 (POST /api/v1/user/addUserWeb)
- */
-export async function handleAddUserWeb(
-  request: Request,
-  env: any,
-  db: D1Database,
-): Promise<Response> {
-  try {
-    const body = await request.json<{ username: string; password: string; code: string }>()
-
-    const username = body.username?.trim()
-    const passwordHash = body.password?.trim()
-    const code = body.code?.trim()
-
-    if (!username || !passwordHash || !code) {
-      return new Response(JSON.stringify({ success: false, code: 400, error: 'Missing fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
+function parseCookies(header: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const pair of header.split(';')) {
+    const idx = pair.indexOf('=')
+    if (idx > 0) {
+      result[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim()
     }
-
-    // 1. 验证邀请码
-    const codeIsValid = verifyAuthCodeJWT(code, env.AUTH_CODE_JWT_SECRET)
-    if (!codeIsValid) {
-      return new Response(
-        JSON.stringify({ success: false, code: 403, error: 'Invalid auth code' }),
-        {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    // 2. 检查用户是否已存在
-    const existingUser = await getUserByUsername(db, username)
-    if (existingUser) {
-      return new Response(
-        JSON.stringify({ success: false, code: 409, error: 'User already exists' }),
-        {
-          status: 409,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    // 3. 创建用户
-    const newUser = await createUser(db, username, passwordHash)
-    if (!newUser) {
-      return new Response(
-        JSON.stringify({ success: false, code: 500, error: 'Failed to create user' }),
-        {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    return new Response(JSON.stringify({ success: true }), {
-      status: 201,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  } catch (error) {
-    console.error('Register error:', error)
-    return new Response(
-      JSON.stringify({ success: false, code: 500, error: 'Internal server error' }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
   }
+  return result
 }
 
-/**
- * 解析Cookie字符串
- */
-function parseCookies(cookieString: string): Record<string, string> {
-  const cookies: Record<string, string> = {}
-  if (!cookieString) return cookies
-
-  cookieString.split(';').forEach((cookie) => {
-    const [name, value] = cookie.trim().split('=')
-    if (name && value) {
-      cookies[name] = decodeURIComponent(value)
-    }
+function webloginRedirectResponse(): Response {
+  const nonce = crypto.randomUUID()
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Redirecting</title><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}';"></head><body><script nonce="${nonce}">localStorage.setItem('user::isLoggedIn','true');location.href='/'</script></body></html>`
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
   })
-
-  return cookies
 }
 
-/**
- * 生成安全的nonce
- */
-function generateNonce(): string {
-  const array = new Uint8Array(16)
-  crypto.getRandomValues(array)
-  return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('')
+interface Env {
+  DB: D1Database
+  AUTH_CODE_JWT_SECRET: string
+  SESSION_JWT_SECRET: string
+  CHAT_SESSION: DurableObjectNamespace
 }

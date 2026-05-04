@@ -1,0 +1,25 @@
+{
+  "app": {
+    "title": "Artificial Chat"
+  },
+  "auth": {
+    "username": "Username",
+    "password": "Password",
+    "rememberMe": "Remember Me",
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout",
+    "noAccount": "Don't have an account? Register",
+    "hasAccount": "Already have an account? Login",
+    "inviteCode": "Invite Code",
+    "continue": "Continue",
+    "registerSuccess": "Registration successful! Redirecting to login page..."
+  },
+  "chat": {
+    "newChat": "New Chat",
+    "sendMessage": "Type a message...",
+    "noChatHistory": "No chat history",
+    "selectOrCreateChat": "Select a chat or create a new one",
+    "loading": "Loading..."
+  }
+}

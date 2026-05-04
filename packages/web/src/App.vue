@@ -11,9 +11,9 @@
         aria-label="侧边栏导航"
       >
         <div class="sidebar-header">
-          <h1>{{ $t('app.title') }}</h1>
+          <h1>{{ t('app.title') }}</h1>
         </div>
-        
+
         <div class="sidebar-content">
           <a-button
             type="primary"
@@ -22,28 +22,28 @@
             class="new-chat-btn"
             aria-label="创建新对话"
           >
-            {{ $t('chat.newChat') }}
+            {{ t('chat.newChat') }}
           </a-button>
 
-          <div class="chat-history" role="region" aria-label="对话历史列表">
+          <nav class="chat-history" role="region" aria-label="对话历史列表">
             <div v-if="chatSessions.length === 0" class="empty-state">
-              {{ $t('chat.noChatHistory') }}
+              {{ t('chat.noChatHistory') }}
             </div>
-            <ul v-else style="list-style: none; margin: 0; padding: 0">
+            <ul v-else class="session-list">
               <li v-for="session in chatSessions" :key="session.id">
                 <a-button
                   type="text"
                   size="small"
                   :class="['session-btn', { active: currentChatId === session.id }]"
                   @click="selectChat(session.id)"
-                  :aria-current="currentChatId === session.id ? 'page' : false"
+                  :aria-current="currentChatId === session.id ? 'page' : undefined"
                   :aria-label="`选择对话: ${session.name}`"
                 >
                   {{ session.name }}
                 </a-button>
               </li>
             </ul>
-          </div>
+          </nav>
         </div>
 
         <div class="sidebar-footer">
@@ -52,7 +52,7 @@
             @click="logout"
             aria-label="登出账户"
           >
-            {{ $t('auth.logout') }}
+            {{ t('auth.logout') }}
           </a-button>
         </div>
       </a-layout-sider>
@@ -61,22 +61,22 @@
         <a-layout-header class="header">
           <a-button
             type="text"
-            :icon="h(MenuFoldOutlined)"
             @click="collapsed = !collapsed"
             class="toggle-button"
             :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
             aria-expanded="true"
-          />
+          >
+            <MenuFoldOutlined />
+          </a-button>
         </a-layout-header>
 
         <a-layout-content class="content" role="main">
           <div v-if="!currentChat" class="empty-chat">
-            <p role="status">{{ $t('chat.selectOrCreateChat') }}</p>
+            <p role="status">{{ t('chat.selectOrCreateChat') }}</p>
           </div>
           <ChatWindow
             v-else
             :chat="currentChat"
-            @send-message="sendMessage"
           />
         </a-layout-content>
       </a-layout>
@@ -85,28 +85,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h } from 'vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'i18next-vue'
+import { ref, computed, onMounted } from 'vue'
 import { MenuFoldOutlined } from '@ant-design/icons-vue'
+import { useTranslation } from 'i18next-vue'
 import ChatWindow from './components/ChatWindow.vue'
-import type { Conversation } from './types'
 import { fetchChatSessions, createChat } from './api/chat'
 
-const router = useRouter()
-const { t } = useI18n()
+const { t } = useTranslation()
 
 const collapsed = ref(false)
 const chatSessions = ref<Array<{ id: string; name: string }>>([])
 const currentChatId = ref<string | null>(null)
 
-const currentChat = computed(() => {
-  return chatSessions.value.find((chat) => chat.id === currentChatId.value)
-})
+const currentChat = computed(() =>
+  chatSessions.value.find((chat) => chat.id === currentChatId.value)
+)
 
-/**
- * 加载聊天记录
- */
 async function loadChatSessions() {
   try {
     const sessions = await fetchChatSessions()
@@ -119,17 +113,12 @@ async function loadChatSessions() {
   }
 }
 
-/**
- * 创建新对话
- */
 async function createNewChat() {
   try {
     const result = await createChat()
     if (result.success) {
-      chatSessions.value.push({
-        id: result.chat_id,
-        name: `${t('chat.newChat')} ${new Date().toLocaleTimeString()}`,
-      })
+      const name = `${t('chat.newChat')} ${new Date().toLocaleTimeString()}`
+      chatSessions.value.push({ id: result.chat_id, name })
       currentChatId.value = result.chat_id
     }
   } catch (error) {
@@ -137,30 +126,15 @@ async function createNewChat() {
   }
 }
 
-/**
- * 选择聊天
- */
 function selectChat(chatId: string) {
   currentChatId.value = chatId
 }
 
-/**
- * 发送消息
- */
-async function sendMessage(content: string) {
-  if (!currentChatId.value) return
-  // 这个逻辑会在ChatWindow组件中处理
-}
-
-/**
- * 登出
- */
-async function logout() {
+function logout() {
   localStorage.removeItem('user::isLoggedIn')
   window.location.href = '/auth/login.html'
 }
 
-// 组件挂载时加载聊天记录
 onMounted(() => {
   loadChatSessions()
 })
@@ -179,11 +153,12 @@ onMounted(() => {
   :deep(.ant-layout-sider) {
     background: #fafafa;
     border-right: 1px solid #f0f0f0;
+    display: flex;
+    flex-direction: column;
 
     .sidebar-header {
       padding: 20px;
       border-bottom: 1px solid #f0f0f0;
-
       h1 {
         margin: 0;
         font-size: 18px;
@@ -210,8 +185,10 @@ onMounted(() => {
           padding: 20px 10px;
         }
 
-        .chat-item {
-          margin-bottom: 8px;
+        .session-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
 
           .session-btn {
             width: 100%;

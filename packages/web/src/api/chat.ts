@@ -1,73 +1,44 @@
-import axios from 'axios'
+import type { Conversation } from '@/types'
 
-const api = axios.create({
-  baseURL: '/api/v1',
-  timeout: 30000,
-})
+const BASE = '/api/v1'
 
-/**
- * 获取聊天记录列表
- */
 export async function fetchChatSessions(): Promise<Array<{ id: string; name: string }>> {
-  try {
-    const response = await api.get('/chat/sessions')
-    return response.data || []
-  } catch (error) {
-    console.error('Failed to fetch chat sessions:', error)
-    throw error
-  }
+  const res = await fetch(`${BASE}/chat/sessions`, { credentials: 'include' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
 }
 
-/**
- * 创建新聊天
- */
 export async function createChat(): Promise<{ success: boolean; chat_id: string }> {
-  try {
-    const response = await api.post('/chat/chat')
-    return response.data
-  } catch (error) {
-    console.error('Failed to create chat:', error)
-    throw error
-  }
+  const res = await fetch(`${BASE}/chat/chat`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
 }
 
-/**
- * 获取聊天内容
- */
-export async function getChatContent(chatId: string) {
-  try {
-    const response = await api.get(`/chat/chat?chat_id=${chatId}`)
-    return response.data
-  } catch (error) {
-    console.error('Failed to get chat content:', error)
-    throw error
-  }
+export async function getChat(chatId: string): Promise<{ id: string; name: string; stat: Record<string, number> }> {
+  const res = await fetch(`${BASE}/chat/chat?chat_id=${encodeURIComponent(chatId)}`, {
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
 }
 
-/**
- * 更新聊天名称
- */
-export async function updateChatName(chatId: string, name: string) {
-  try {
-    const response = await api.patch(`/chat/chat?chat_id=${chatId}`, { name })
-    return response.data
-  } catch (error) {
-    console.error('Failed to update chat name:', error)
-    throw error
-  }
+export async function updateChat(chatId: string, name: string): Promise<void> {
+  const res = await fetch(`${BASE}/chat/chat?chat_id=${encodeURIComponent(chatId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
 
-/**
- * 删除聊天
- */
-export async function deleteChat(chatId: string) {
-  try {
-    const response = await api.delete(`/chat/chat?chat_id=${chatId}`)
-    return response.status === 202
-  } catch (error) {
-    console.error('Failed to delete chat:', error)
-    throw error
-  }
+export async function deleteChat(chatId: string): Promise<void> {
+  const res = await fetch(`${BASE}/chat/chat?chat_id=${encodeURIComponent(chatId)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
-
-export default api

@@ -1,32 +1,48 @@
-import { randomBytes, pbkdf2Sync } from 'crypto'
-
-/**
- * 生成随机盐
- */
-export function generateSalt(length: number = 32): string {
-  return randomBytes(length).toString('hex')
+export function generateSalt(length = 32): string {
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/**
- * 哈希密码（使用PBKDF2）
- */
-export function hashPassword(password: string, salt: string, iterations: number = 100000): string {
-  // PBKDF2: 100000次迭代, 使用SHA-256, 生成64字节的密钥
-  const hash = pbkdf2Sync(password, salt, iterations, 64, 'sha256')
-  return hash.toString('hex')
+export async function hashPassword(
+  password: string,
+  salt: string,
+  iterations = 100000,
+): Promise<string> {
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: encoder.encode(salt),
+      iterations,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    512,
+  )
+  return Array.from(new Uint8Array(derivedBits), (b) =>
+    b.toString(16).padStart(2, '0'),
+  ).join('')
 }
 
-/**
- * 验证密码
- */
-export function verifyPassword(password: string, salt: string, hash: string): boolean {
-  const computedHash = hashPassword(password, salt)
-  return computedHash === hash
+export async function verifyPassword(
+  password: string,
+  salt: string,
+  hash: string,
+): Promise<boolean> {
+  const computed = await hashPassword(password, salt)
+  return computed === hash
 }
 
-/**
- * 生成用户secret（用于session验证）
- */
 export function generateUserSecret(): string {
-  return randomBytes(32).toString('hex')
+  const bytes = new Uint8Array(128)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
