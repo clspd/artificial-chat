@@ -3,8 +3,17 @@ import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb } from './ha
 import { handleGetChatSessions, handleChat } from './handlers/chat'
 import { validateSession } from './services/user'
 import { ChatSession } from './durable-objects/chat-session'
+import { SCHEMA_SQL } from './db/schema'
 
 export { ChatSession }
+
+let schemaInitialized = false
+
+async function ensureSchema(db: D1Database) {
+  if (schemaInitialized) return
+  await db.exec(SCHEMA_SQL)
+  schemaInitialized = true
+}
 
 interface Env {
   DB: D1Database
@@ -76,6 +85,7 @@ export default {
 
     // API routes
     if (url.pathname.startsWith('/api/')) {
+      await ensureSchema(env.DB)
       return router.fetch(request, env)
     }
 
