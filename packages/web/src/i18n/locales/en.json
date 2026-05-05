@@ -6,6 +6,7 @@
     "username": "Username",
     "password": "Password",
     "rememberMe": "Remember Me",
+    "accountDisabled": "Your account is in an abnormal state. Please contact support.",
     "login": "Login",
     "register": "Register",
     "logout": "Logout",
@@ -14,6 +15,9 @@
     "inviteCode": "Invite Code",
     "continue": "Continue",
     "registerSuccess": "Registration successful! Redirecting to login page..."
+  },
+  "common": {
+    "error": "Error"
   },
   "chat": {
     "newChat": "New Chat",

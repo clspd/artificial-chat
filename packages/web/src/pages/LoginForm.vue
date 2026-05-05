@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue'
 import { useTranslation } from 'i18next-vue'
 
@@ -91,6 +91,13 @@ async function sha256(message: string): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer))
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
 }
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/v1/chat/sessions', { credentials: 'include' })
+    if (res.ok) window.location.href = '/'
+  } catch { /* not logged in */ }
+})
 
 async function handleLogin() {
   errors.username = ''
@@ -135,7 +142,9 @@ async function handleLogin() {
 
 <style scoped>
 .login-page {
-  min-height: 100vh;
+  position: absolute;
+  inset: 0;
+  padding: 10px;
   display: flex;
   justify-content: center;
   align-items: center;

@@ -158,7 +158,9 @@ async function handleRegister() {
 
 <style scoped>
 .register-page {
-  min-height: 100vh;
+  position: absolute;
+  inset: 0;
+  padding: 10px;
   display: flex;
   justify-content: center;
   align-items: center;

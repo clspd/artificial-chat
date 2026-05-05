@@ -4,46 +4,53 @@
       <article
         v-for="message in messages"
         :key="message.id"
-        :class="['message', message.role === 'USER' ? 'user' : 'assistant']"
+        :class="['message-item', message.role === 'USER' ? 'user' : 'assistant']"
+        :data-role="message.role === 'USER' ? 'user' : 'assistant'"
       >
-        <div class="message-avatar" role="img" :aria-label="`${message.role}消息`">
-          <span>{{ message.role === 'USER' ? '👤' : '🤖' }}</span>
+        <div class="message-avatar" v-if="message.role === 'ASSISTANT'">
+          <RobotOutlined />
         </div>
-        <div class="message-body">
-          <div
-            v-for="fragment in message.fragments"
-            :key="fragment.id"
-            class="fragment"
-          >
-            {{ fragment.content }}
+        <div class="message-body-container">
+          <div class="message-body" :data-fill="message.role === 'ASSISTANT' ? true : undefined">
+            <div
+              v-for="fragment in message.fragments"
+              :key="fragment.id"
+              class="fragment"
+            >{{ fragment.content }}</div>
           </div>
-          <div v-if="message.has_pending_fragment" class="pending-indicator" role="status">
-            ⌛ 生成中...
+          <div v-if="message.role === 'ASSISTANT' && message.has_pending_fragment" class="wip-tip">
+            <LoadingOutlined class="spin" />
           </div>
+        </div>
+        <div class="message-avatar" v-if="message.role === 'USER'">
+          <UserOutlined />
         </div>
       </article>
     </div>
 
     <div class="input-container">
-      <div class="input-wrapper">
+      <div class="input-message">
         <textarea
           v-model="inputMessage"
           :placeholder="t('chat.sendMessage')"
           rows="3"
-          @keydown.enter.ctrl="sendMessage"
-          @keydown.enter.meta="sendMessage"
+          @keydown.enter="sendByEnter"
           :disabled="isLoading"
           aria-label="消息输入框"
-          aria-multiline="true"
         />
-        <a-button
-          type="primary"
-          @click="sendMessage"
-          :disabled="!inputMessage.trim() || isLoading"
-          :loading="isLoading"
-        >
-          {{ isLoading ? t('chat.loading') : '发送' }}
-        </a-button>
+        <div class="bottom-row">
+          <div class="flex-space"></div>
+          <a-button
+            type="primary"
+            shape="circle"
+            :disabled="!inputMessage.trim() || isLoading"
+            @click="sendMessage"
+            :aria-label="isLoading ? '停止生成' : '发送消息'"
+          >
+            <LoadingOutlined v-if="isLoading" />
+            <ArrowUpOutlined v-else />
+          </a-button>
+        </div>
       </div>
     </div>
   </div>
@@ -52,9 +59,11 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useTranslation } from 'i18next-vue'
+import { UserOutlined, RobotOutlined, LoadingOutlined, ArrowUpOutlined } from '@ant-design/icons-vue'
 import type { Message, PatchOperation } from '@/types'
 import { MessageStatus } from '@/types'
 import { chatWebSocketManager } from '@/lib/websocket'
+import { applyPatch } from '@/lib/patch'
 
 const props = defineProps<{ chatId: string }>()
 const { t } = useTranslation()
@@ -72,45 +81,38 @@ async function scrollToBottom() {
   }
 }
 
+function sendByEnter(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey) sendMessage()
+}
+
 async function sendMessage() {
   if (!inputMessage.value.trim() || isLoading.value) return
-
   const content = inputMessage.value.trim()
   inputMessage.value = ''
   isLoading.value = true
-
   chatWebSocketManager.sendMessage('send', content)
 }
 
-function handlePatch(patch: PatchOperation) {
-  const { p, o, v } = patch
-  const path = String(p).split('/')
-
-  if (path[0] === 'content' && path[1] === 'content') {
-    if (o === 'PUSH') {
-      messages.value.push(v as Message)
-    } else if (o === 'APPEND') {
-      // path: content/content/${msgIdx}/fragments/${fragIdx}/content
-      const msgIdx = parseInt(path[2])
-      const fragIdx = parseInt(path[4])
-      const msg = messages.value[msgIdx]
-      if (msg?.fragments[fragIdx]) {
-        msg.fragments[fragIdx].content += v as string
-        messages.value[msgIdx] = { ...msg }
-      }
-    } else if (o === 'UPDATE') {
-      // path: content/content/${msgIdx}
-      const msgIdx = parseInt(path[2])
-      if (messages.value[msgIdx]) {
-        const updated = { ...messages.value[msgIdx], ...(v as Partial<Message>) }
-        messages.value[msgIdx] = updated
-        if (updated.role === 'ASSISTANT' && updated.status === MessageStatus.Finished) {
-          isLoading.value = false
-        }
-      }
-    }
-    scrollToBottom()
+function handlePatch({ p, o, v }: PatchOperation) {
+  // Strip "content/content" prefix — operate directly on reactive array
+  let rel = ''
+  if (p === 'content/content') {
+    rel = ''
+  } else if (p.startsWith('content/content/')) {
+    rel = p.slice('content/content/'.length)
+  } else {
+    return
   }
+
+  if (o === 'PUSH' && rel === '') {
+    messages.value.push(v as Message)
+  } else if (rel !== '') {
+    applyPatch(messages.value, { p: rel, o, v })
+  }
+
+  const last = messages.value[messages.value.length - 1]
+  isLoading.value = !!(last?.role === 'ASSISTANT' && last.status !== MessageStatus.Finished)
+  scrollToBottom()
 }
 
 function handleWebSocketMessage(message: { type: string; content: unknown }) {
@@ -150,6 +152,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .chat-view {
   flex: 1;
   display: flex;
@@ -157,91 +164,135 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* ---------- messages ---------- */
+
 .messages-container {
   flex: 1;
   overflow-y: auto;
   padding: 1em;
 }
 
-.message {
+.message-item {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   max-width: 50rem;
-  margin: 0 auto 12px auto;
+  margin: 0 auto 12px;
+  overflow-wrap: anywhere;
 }
 
-.message.user {
+.message-item.user {
   justify-content: flex-end;
 }
 
+/* avatar */
+
 .message-avatar {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  border: 1px solid #d9d9d9;
+  border-radius: 50%;
+  font-size: 18px;
+  color: #666;
+}
+
+.user .message-avatar {
+  color: #1677ff;
+  border-color: #91caff;
+}
+
+/* body */
+
+.message-body-container {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.message-body[data-fill] {
+  flex: 1;
 }
 
 .message-body {
-  max-width: 70%;
-  padding: 12px;
-  border-radius: 12px;
-  word-break: break-word;
-  line-height: 1.6;
+  overflow: hidden;
 }
 
 .user .message-body {
-  background: #1890ff;
-  color: #fff;
+  background: #e0ebff;
+  padding: 0.5em 1em;
+  border-radius: 1em;
   border-bottom-right-radius: 0;
 }
 
 .assistant .message-body {
-  background: #f5f5f5;
-  color: #333;
-  border-bottom-left-radius: 0;
+  padding: 0.25em 0;
 }
 
 .fragment {
   white-space: pre-wrap;
+  line-height: 1.6;
+  word-break: break-word;
 }
 
-.pending-indicator {
-  opacity: 0.7;
-  font-style: italic;
-  font-size: 12px;
-  margin-top: 8px;
+.user .fragment {
+  color: #000;
 }
+
+/* ---------- wip ---------- */
+
+.wip-tip {
+  color: #999;
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.wip-tip .spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ---------- input ---------- */
 
 .input-container {
   padding: 1em 1em 0 1em;
-  position: sticky;
-  bottom: 0;
   background: var(--background, #fff);
 }
 
-.input-wrapper {
+.input-message {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  border: 1px solid var(--input-border-color, #d9d9d9);
+  border-radius: 1em;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.06);
+  width: 100%;
   max-width: 50rem;
   margin: 0 auto;
+  overflow: hidden;
 }
 
-.input-wrapper textarea {
+.input-message textarea {
   flex: 1;
-  padding: 10px 12px;
-  border: 1px solid var(--input-border-color, #d9d9d9);
-  border-radius: 4px;
+  border: none;
+  outline: none;
+  padding: 0.75em 1em;
   resize: none;
   font-size: 14px;
   font-family: inherit;
+  line-height: 1.6;
+  min-height: 4em;
+  max-height: calc(100vh - 20em);
+  background: transparent;
 }
 
-.input-wrapper textarea:focus {
-  outline: none;
-  border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+.bottom-row {
+  display: flex;
+  align-items: center;
+  padding: 0 0.75em 0.75em 0.75em;
+}
+
+.flex-space {
+  flex: 1;
 }
 </style>

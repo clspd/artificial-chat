@@ -2,9 +2,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MenuFoldOutlined } from '@ant-design/icons-vue'
+import { Modal } from 'ant-design-vue'
 import { useTranslation } from 'i18next-vue'
 import SidebarContent from '@/components/SidebarContent.vue'
-import { fetchChatSessions, createChat } from '@/api/chat'
+import { fetchChatSessions, createChat, ApiError } from '@/api/chat'
 
 const { t } = useTranslation()
 const router = useRouter()
@@ -24,17 +25,29 @@ onMounted(() => {
 
 onUnmounted(() => { window.removeEventListener('resize', onResize) })
 
-// Chat sessions
 const chatSessions = ref<Array<{ id: string; name: string }>>([])
 const currentChatId = computed(() => (route.params as any).chatId as string | null)
 const currentChatName = computed(() =>
   chatSessions.value.find((s) => s.id === currentChatId.value)?.name
 )
 
+function handleApiError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.status === 401) {
+    window.location.href = '/auth/login.html'
+    return true
+  }
+  if (e.status === 403) {
+    Modal.error({ title: t('common.error'), content: e.body || t('auth.accountDisabled') })
+    return true
+  }
+  return false
+}
+
 async function loadChatSessions() {
   try {
     chatSessions.value = await fetchChatSessions()
-  } catch { /* */ }
+  } catch (e) { handleApiError(e) }
 }
 
 async function createNewChat() {
@@ -46,7 +59,7 @@ async function createNewChat() {
       router.push({ name: 'chat', params: { chatId: result.chat_id } })
       if (!isLargeScreen.value) sidebarCollapsed.value = true
     }
-  } catch { /* */ }
+  } catch (e) { handleApiError(e) }
 }
 
 function selectChat(chatId: string) {

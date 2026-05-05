@@ -142,7 +142,9 @@ async function handleSubmit() {
 
 <style scoped>
 .gencode-page {
-  min-height: 100vh;
+  position: absolute;
+  inset: 0;
+  padding: 10px;
   display: flex;
   justify-content: center;
   align-items: center;
