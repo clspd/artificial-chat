@@ -86,6 +86,17 @@ export async function handleAddUserWeb(request: IRequest, env: Env): Promise<Res
   return Response.json({ success: true }, { status: 201 })
 }
 
+export async function handleLogout(): Promise<Response> {
+  const cleared = cookie.serialize('SessionSecret', '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  })
+  return new Response(null, { status: 200, headers: { 'Set-Cookie': cleared } })
+}
+
 export async function handleGenCode(request: IRequest, env: Env): Promise<Response> {
   let body: { password?: string; source?: string; expiry?: number }
   try {

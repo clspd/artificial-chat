@@ -71,9 +71,13 @@ function selectChatAndClose(chatId: string) {
   if (!isLargeScreen.value) sidebarCollapsed.value = true
 }
 
-function logout() {
-  localStorage.removeItem('user::isLoggedIn')
-  window.location.href = '/auth/login.html'
+async function logout() {
+  try {
+    await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' })
+  } finally {
+    localStorage.removeItem('user::isLoggedIn')
+    window.location.href = '/auth/login.html'
+  }
 }
 </script>
 
