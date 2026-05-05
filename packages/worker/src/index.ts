@@ -72,23 +72,36 @@ router.get('/api/v1/chat/chat', authMiddleware, handleChat)
 router.patch('/api/v1/chat/chat', authMiddleware, handleChat)
 router.delete('/api/v1/chat/chat', authMiddleware, handleChat)
 
-// WebSocket
-router.get('/api/v1/chat/connect', authMiddleware, (request: IRequest, env: Env) => {
-  const username = (request as any).username as string
-  const chatId = (request.query as Record<string, string>).chat_id
+// WebSocket route: handled outside itty-router so stub.fetch()
+// receives the raw Request (not IRequest) to preserve the
+// WebSocket upgrade headers that Cloudflare's runtime needs.
+async function handleWebSocketUpgrade(request: Request, env: Env): Promise<Response> {
+  const cookies = cookie.parse(request.headers.get('Cookie') || '')
+  const token = cookies.SessionSecret
+  if (!token) return new Response('Unauthorized', { status: 401 })
+
+  const user = await validateSession(env.DB, token, env.SESSION_JWT_SECRET)
+  if (!user) return new Response('Unauthorized', { status: 401 })
+  if (!user.user_enabled) return new Response(`Your account is in an abnormal state. Please contact us if you think this is wrong. Status: ${user.status}`, { status: 403 })
+
+  const url = new URL(request.url)
+  const chatId = url.searchParams.get('chat_id')
   if (!chatId) return new Response('Missing chat_id', { status: 400 })
 
-  const doId = env.CHAT_SESSION.idFromName(`user:${username}`)
+  const doId = env.CHAT_SESSION.idFromName(`user:${user.username}`)
   const stub = env.CHAT_SESSION.get(doId)
-  const url = new URL(request.url)
-  url.pathname = '/connect'
-  url.hostname = 'do'
-  return stub.fetch(url.toString(), { headers: request.headers })
-})
+  return stub.fetch(request)
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+
+    // WebSocket upgrade must use raw Request — handle before itty-router
+    if (url.pathname === '/api/v1/chat/connect') {
+      await ensureSchema(env.DB)
+      return handleWebSocketUpgrade(request, env)
+    }
 
     // API routes
     if (url.pathname.startsWith('/api/')) {

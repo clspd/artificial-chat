@@ -53,7 +53,7 @@
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useTranslation } from 'i18next-vue'
 import type { Message, PatchOperation } from '@/types'
-import { MessageRole, MessageStatus, MessageFragmentType, MessageContentType } from '@/types'
+import { MessageStatus } from '@/types'
 import { chatWebSocketManager } from '@/lib/websocket'
 
 const props = defineProps<{ chatId: string }>()
@@ -79,33 +79,7 @@ async function sendMessage() {
   inputMessage.value = ''
   isLoading.value = true
 
-  try {
-    const userMessage: Message = {
-      id: messages.value.length + 1,
-      parent_id: null,
-      role: MessageRole.User,
-      ts: Date.now(),
-      status: MessageStatus.Finished,
-      files: [],
-      fragments: [
-        {
-          id: 1,
-          type: MessageFragmentType.TextFragment,
-          ts: Date.now(),
-          contentType: MessageContentType.Text,
-          content,
-        },
-      ],
-      has_pending_fragment: false,
-    }
-    messages.value.push(userMessage)
-    await scrollToBottom()
-    chatWebSocketManager.sendMessage('send', userMessage)
-  } catch (error) {
-    console.error('Failed to send message:', error)
-  } finally {
-    isLoading.value = false
-  }
+  chatWebSocketManager.sendMessage('send', content)
 }
 
 function handlePatch(patch: PatchOperation) {
@@ -116,17 +90,23 @@ function handlePatch(patch: PatchOperation) {
     if (o === 'PUSH') {
       messages.value.push(v as Message)
     } else if (o === 'APPEND') {
+      // path: content/content/${msgIdx}/fragments/${fragIdx}/content
       const msgIdx = parseInt(path[2])
-      const fragIdx = parseInt(path[3])
+      const fragIdx = parseInt(path[4])
       const msg = messages.value[msgIdx]
       if (msg?.fragments[fragIdx]) {
         msg.fragments[fragIdx].content += v as string
         messages.value[msgIdx] = { ...msg }
       }
     } else if (o === 'UPDATE') {
+      // path: content/content/${msgIdx}
       const msgIdx = parseInt(path[2])
       if (messages.value[msgIdx]) {
-        messages.value[msgIdx] = { ...messages.value[msgIdx], ...(v as Partial<Message>) }
+        const updated = { ...messages.value[msgIdx], ...(v as Partial<Message>) }
+        messages.value[msgIdx] = updated
+        if (updated.role === 'ASSISTANT' && updated.status === MessageStatus.Finished) {
+          isLoading.value = false
+        }
       }
     }
     scrollToBottom()
