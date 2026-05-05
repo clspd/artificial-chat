@@ -41,6 +41,9 @@
     "sendMessage": "Type a message...",
     "noChatHistory": "No chat history",
     "selectOrCreateChat": "Select a chat or create a new one",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "connectionLost": "Connection lost",
+    "reconnect": "Reconnect",
+    "disconnected": "Disconnected"
   }
 }

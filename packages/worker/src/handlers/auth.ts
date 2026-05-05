@@ -68,6 +68,9 @@ export async function handleAddUserWeb(request: IRequest, env: Env): Promise<Res
   if (!username || !password || !code) {
     return Response.json({ success: false, error: 'Missing fields' }, { status: 400 })
   }
+  if (/[^\x00-\x7F]/.test(username)) {
+    return Response.json({ success: false, error: 'Username must contain only ASCII characters' }, { status: 400 })
+  }
 
   // Verify invite code JWT
   const payload = await verifyJWT(code, env.AUTH_CODE_JWT_SECRET)

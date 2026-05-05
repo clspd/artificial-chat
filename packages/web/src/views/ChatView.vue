@@ -1,5 +1,10 @@
 <template>
   <div class="chat-view">
+    <div v-if="connectionState === 'disconnected'" class="disconnected-banner">
+      <span>{{ t('chat.connectionLost') }}</span>
+      <a-button size="small" @click="reconnect">{{ t('chat.reconnect') }}</a-button>
+    </div>
+
     <div class="messages-container" ref="messagesContainer" role="log" aria-label="聊天消息" aria-live="polite">
       <article
         v-for="message in messages"
@@ -32,10 +37,10 @@
       <div class="input-message">
         <textarea
           v-model="inputMessage"
-          :placeholder="t('chat.sendMessage')"
-          rows="3"
+          :placeholder="connectionState === 'disconnected' ? t('chat.disconnected') : t('chat.sendMessage')"
+          rows="2"
           @keydown.enter="sendByEnter"
-          :disabled="isLoading"
+          :disabled="connectionState !== 'connected' || isLoading"
           aria-label="消息输入框"
         />
         <div class="bottom-row">
@@ -43,7 +48,7 @@
           <a-button
             type="primary"
             shape="circle"
-            :disabled="!inputMessage.trim() || isLoading"
+            :disabled="!inputMessage.trim() || connectionState !== 'connected' || isLoading"
             @click="sendMessage"
             :aria-label="isLoading ? '停止生成' : '发送消息'"
           >
@@ -62,7 +67,7 @@ import { useTranslation } from 'i18next-vue'
 import { UserOutlined, RobotOutlined, LoadingOutlined, ArrowUpOutlined } from '@ant-design/icons-vue'
 import type { Message, PatchOperation } from '@/types'
 import { MessageStatus } from '@/types'
-import { chatWebSocketManager } from '@/lib/websocket'
+import { chatWebSocketManager, type ConnectionState } from '@/lib/websocket'
 import { applyPatch } from '@/lib/patch'
 
 const props = defineProps<{ chatId: string }>()
@@ -71,8 +76,10 @@ const { t } = useTranslation()
 const messages = ref<Message[]>([])
 const inputMessage = ref('')
 const isLoading = ref(false)
+const connectionState = ref<ConnectionState>('disconnected')
 const messagesContainer = ref<HTMLElement>()
 const unsubscribe = ref<(() => void) | null>(null)
+const unsubState = ref<(() => void) | null>(null)
 
 async function scrollToBottom() {
   await nextTick()
@@ -85,12 +92,20 @@ function sendByEnter(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey) sendMessage()
 }
 
-async function sendMessage() {
+function sendMessage() {
   if (!inputMessage.value.trim() || isLoading.value) return
+  if (connectionState.value !== 'connected') return
   const content = inputMessage.value.trim()
   inputMessage.value = ''
   isLoading.value = true
-  chatWebSocketManager.sendMessage('send', content)
+  const sent = chatWebSocketManager.sendMessage('send', content)
+  if (!sent) {
+    isLoading.value = false
+  }
+}
+
+function reconnect() {
+  chatWebSocketManager.reconnect()
 }
 
 function handlePatch({ p, o, v }: PatchOperation) {
@@ -130,11 +145,17 @@ function handleWebSocketMessage(message: { type: string; content: unknown }) {
 }
 
 function connect() {
-  if (unsubscribe.value) unsubscribe.value()
+  if (unsubscribe.value) { unsubscribe.value(); unsubscribe.value = null }
+  if (unsubState.value) { unsubState.value(); unsubState.value = null }
+
+  unsubState.value = chatWebSocketManager.onStateChange((state) => {
+    connectionState.value = state
+  })
+
   chatWebSocketManager.connect(props.chatId).then(() => {
     unsubscribe.value = chatWebSocketManager.on('*', handleWebSocketMessage)
-  }).catch((error) => {
-    console.error('Failed to connect WebSocket:', error)
+  }).catch(() => {
+    // State change handler already shows disconnected banner
   })
 }
 
@@ -148,6 +169,7 @@ watch(() => props.chatId, () => {
 onUnmounted(() => {
   chatWebSocketManager.disconnect()
   if (unsubscribe.value) unsubscribe.value()
+  if (unsubState.value) unsubState.value()
 })
 </script>
 
@@ -162,6 +184,19 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.disconnected-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #fff7e6;
+  border-bottom: 1px solid #ffd591;
+  color: #d46b08;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 /* ---------- messages ---------- */
@@ -256,7 +291,7 @@ onUnmounted(() => {
 /* ---------- input ---------- */
 
 .input-container {
-  padding: 1em 1em 0 1em;
+  padding: 1em;
   background: var(--background, #fff);
 }
 

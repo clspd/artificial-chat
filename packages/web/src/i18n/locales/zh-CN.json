@@ -41,6 +41,9 @@
     "sendMessage": "输入消息...",
     "noChatHistory": "暂无对话历史",
     "selectOrCreateChat": "选择一个对话或创建新对话",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "connectionLost": "连接已断开",
+    "reconnect": "重新连接",
+    "disconnected": "未连接"
   }
 }

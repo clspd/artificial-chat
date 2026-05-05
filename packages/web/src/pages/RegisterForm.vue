@@ -116,6 +116,7 @@ async function handleRegister() {
   errors.code = ''
 
   if (!form.username.trim()) { errors.username = '请输入用户名'; return }
+  if (/[^\x00-\x7F]/.test(form.username.trim())) { errors.username = '用户名只能使用英文字母、数字和符号'; return }
   if (!form.password) { errors.password = '请输入密码'; return }
   if (!form.code.trim()) { errors.code = '请输入邀请码'; return }
 
