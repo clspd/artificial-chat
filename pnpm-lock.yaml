@@ -20,6 +20,9 @@ importers:
       ant-design-vue:
         specifier: 4.2.6
         version: 4.2.6(vue@3.5.33(typescript@5.7.3))
+      dayjs:
+        specifier: ^1.11.20
+        version: 1.11.20
       i18next:
         specifier: ^23.7.6
         version: 23.16.8

@@ -11,9 +11,11 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AAlert: typeof import('ant-design-vue/es')['Alert']
     AButton: typeof import('ant-design-vue/es')['Button']
     ACard: typeof import('ant-design-vue/es')['Card']
     ACheckbox: typeof import('ant-design-vue/es')['Checkbox']
+    ADatePicker: typeof import('ant-design-vue/es')['DatePicker']
     AForm: typeof import('ant-design-vue/es')['Form']
     AFormItem: typeof import('ant-design-vue/es')['FormItem']
     AInput: typeof import('ant-design-vue/es')['Input']
@@ -23,6 +25,7 @@ declare module 'vue' {
     ALayoutHeader: typeof import('ant-design-vue/es')['LayoutHeader']
     ALayoutSider: typeof import('ant-design-vue/es')['LayoutSider']
     AModal: typeof import('ant-design-vue/es')['Modal']
+    ATypographyParagraph: typeof import('ant-design-vue/es')['TypographyParagraph']
     ChatWindow: typeof import('./src/components/ChatWindow.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

@@ -53,15 +53,17 @@ export async function createSessionJWT(
 
 export async function createAuthCodeJWT(
   secret: string,
-  expiresInSeconds = 3600,
+  source: string,
+  expiresInSeconds?: number,
 ): Promise<string> {
   const header: JWTHeader = { alg: 'HS256', typ: 'JWT' }
   const now = Math.floor(Date.now() / 1000)
   const payload: JWTPayload = {
     username: '__auth_code__',
+    source,
     iat: now,
-    exp: now + expiresInSeconds,
   }
+  if (expiresInSeconds) payload.exp = now + expiresInSeconds
   return encodeJWT(header, payload)
 }
 

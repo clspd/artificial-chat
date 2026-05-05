@@ -1,5 +1,5 @@
 import { AutoRouter, IRequest } from 'itty-router'
-import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb } from './handlers/auth'
+import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb, handleGenCode } from './handlers/auth'
 import { handleGetChatSessions, handleChat } from './handlers/chat'
 import { validateSession } from './services/user'
 import { ChatSession } from './durable-objects/chat-session'
@@ -16,6 +16,7 @@ async function ensureSchema(db: D1Database) {
     salt TEXT NOT NULL,
     password TEXT NOT NULL,
     user_secret TEXT NOT NULL,
+    user_source TEXT NOT NULL DEFAULT 'unknown',
     created_at INTEGER DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   )`).run()
@@ -27,6 +28,7 @@ interface Env {
   DB: D1Database
   ASSETS: { fetch: (request: Request) => Promise<Response> }
   AUTH_CODE_JWT_SECRET: string
+  AUTH_CODE_GEN_PASSWORD: string
   SESSION_JWT_SECRET: string
   CHAT_SESSION: DurableObjectNamespace
 }
@@ -65,6 +67,7 @@ const router = AutoRouter()
 router.get('/api/v1/user/weblogin', handleWebLogin)
 router.post('/api/v1/user/webLoginByPassword', handleWebLoginByPassword)
 router.post('/api/v1/user/addUserWeb', handleAddUserWeb)
+router.post('/api/v1/auth/gencode', handleGenCode)
 
 // Chat REST routes (auth required)
 router.get('/api/v1/chat/sessions', authMiddleware, handleGetChatSessions)

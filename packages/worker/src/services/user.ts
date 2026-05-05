@@ -7,6 +7,7 @@ export interface UserRecord {
   salt: string
   password: string
   user_secret: string
+  user_source: string
   created_at: number
   updated_at: number
 }
@@ -26,6 +27,7 @@ export async function createUser(
   db: D1Database,
   username: string,
   passwordHashFromClient: string,
+  userSource: string,
 ): Promise<UserRecord> {
   const salt = generateSalt()
   const password = await hashPassword(passwordHashFromClient, salt)
@@ -33,9 +35,9 @@ export async function createUser(
 
   const result = await db
     .prepare(
-      'INSERT INTO users (username, salt, password, user_secret) VALUES (?, ?, ?, ?) RETURNING *',
+      'INSERT INTO users (username, salt, password, user_secret, user_source) VALUES (?, ?, ?, ?, ?) RETURNING *',
     )
-    .bind(username, salt, password, userSecret)
+    .bind(username, salt, password, userSecret, userSource)
     .first<UserRecord>()
 
   if (!result) throw new Error('Failed to create user')
@@ -66,14 +68,12 @@ export async function validateSession(
   token: string,
   sessionJWTSecret: string,
 ): Promise<UserRecord | null> {
-  // Decode first to get username without verifying
   const payload = decodeJWT(token)
   if (!payload?.username) return null
 
   const user = await getUserByUsername(db, payload.username)
   if (!user) return null
 
-  // Verify with user's own secret + server secret
   const valid = await verifyJWT(token, user.user_secret + sessionJWTSecret)
   if (!valid) return null
 

@@ -25,6 +25,7 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         login: resolve(__dirname, 'auth/login.html'),
         register: resolve(__dirname, 'auth/register.html'),
+        gencode: resolve(__dirname, 'auth/gencode.html'),
       },
     },
   },
