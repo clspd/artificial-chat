@@ -8,6 +8,10 @@ export interface UserRecord {
   password: string
   user_secret: string
   user_source: string
+  user_enabled: number
+  status: number
+  privilege: number
+  user_is_super_admin: number
   created_at: number
   updated_at: number
 }
@@ -35,7 +39,7 @@ export async function createUser(
 
   const result = await db
     .prepare(
-      'INSERT INTO users (username, salt, password, user_secret, user_source) VALUES (?, ?, ?, ?, ?) RETURNING *',
+      'INSERT INTO users (username, salt, password, user_secret, user_source, user_enabled, status, privilege, user_is_super_admin) VALUES (?, ?, ?, ?, ?, 1, 0, 0, 0) RETURNING *',
     )
     .bind(username, salt, password, userSecret, userSource)
     .first<UserRecord>()
@@ -50,9 +54,10 @@ export async function loginUser(
   passwordHashFromClient: string,
   remember: boolean,
   sessionJWTSecret: string,
-): Promise<{ token: string; maxAge?: number } | null> {
+): Promise<{ token: string; maxAge?: number } | { disabled: true; status: number } | null> {
   const user = await getUserByUsername(db, username)
   if (!user) return null
+  if (!user.user_enabled) return { disabled: true, status: user.status }
 
   const { salt, password } = user
   const computedHash = await hashPassword(passwordHashFromClient, salt)

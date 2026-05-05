@@ -1,4 +1,5 @@
 import { AutoRouter, IRequest } from 'itty-router'
+import * as cookie from 'cookie'
 import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb, handleGenCode } from './handlers/auth'
 import { handleGetChatSessions, handleChat } from './handlers/chat'
 import { validateSession } from './services/user'
@@ -17,6 +18,10 @@ async function ensureSchema(db: D1Database) {
     password TEXT NOT NULL,
     user_secret TEXT NOT NULL,
     user_source TEXT NOT NULL DEFAULT 'unknown',
+    user_enabled INTEGER NOT NULL DEFAULT 1,
+    status INTEGER NOT NULL DEFAULT 0,
+    privilege INTEGER NOT NULL DEFAULT 0,
+    user_is_super_admin INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   )`).run()
@@ -34,8 +39,7 @@ interface Env {
 }
 
 async function authMiddleware(request: IRequest, env: Env) {
-  const cookieHeader = request.headers.get('Cookie') || ''
-  const cookies = parseCookies(cookieHeader)
+  const cookies = cookie.parse(request.headers.get('Cookie') || '')
   const token = cookies.SessionSecret
 
   if (!token) {
@@ -46,19 +50,11 @@ async function authMiddleware(request: IRequest, env: Env) {
   if (!user) {
     return new Response('Unauthorized', { status: 401 })
   }
+  if (!user.user_enabled) {
+    return new Response(`Your account is in an abnormal state. Please contact us if you think this is wrong. Status: ${user.status}`, { status: 403 })
+  }
 
   ;(request as any).username = user.username
-}
-
-function parseCookies(header: string): Record<string, string> {
-  const result: Record<string, string> = {}
-  for (const pair of header.split(';')) {
-    const idx = pair.indexOf('=')
-    if (idx > 0) {
-      result[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim()
-    }
-  }
-  return result
 }
 
 const router = AutoRouter()

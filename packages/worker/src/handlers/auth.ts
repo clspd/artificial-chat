@@ -1,15 +1,16 @@
 import { IRequest } from 'itty-router'
+import * as cookie from 'cookie'
 import { createUser, loginUser, validateSession, getUserByUsername } from '../services/user'
 import { verifyJWT, createAuthCodeJWT } from '../lib/jwt'
 
 export async function handleWebLogin(request: IRequest, env: Env): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie') || ''
-  const cookies = parseCookies(cookieHeader)
+  const cookies = cookie.parse(cookieHeader)
   const token = cookies.SessionSecret
 
   if (token) {
     const user = await validateSession(env.DB, token, env.SESSION_JWT_SECRET)
-    if (user) {
+    if (user?.user_enabled) {
       return webloginRedirectResponse()
     }
   }
@@ -37,22 +38,21 @@ export async function handleWebLoginByPassword(
   if (!result) {
     return Response.json({ success: false, error: '用户名或密码错误' }, { status: 401 })
   }
-
-  const cookieAttrs = [
-    'HttpOnly',
-    'Secure',
-    'SameSite=Lax',
-    'Path=/',
-  ]
-  if (result.maxAge) {
-    cookieAttrs.push(`Max-Age=${result.maxAge}`)
+  if ('disabled' in result) {
+    return Response.json({ success: false, error: `Your account status is in an abnormal state. Please contact us if you think this is wrong. Status: ${result.status}` }, { status: 403 })
   }
+
+  const cookieValue = cookie.serialize('SessionSecret', result.token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: result.maxAge,
+  })
 
   return new Response(null, {
     status: 200,
-    headers: {
-      'Set-Cookie': `SessionSecret=${result.token}; ${cookieAttrs.join('; ')}`,
-    },
+    headers: { 'Set-Cookie': cookieValue },
   })
 }
 
@@ -102,7 +102,7 @@ export async function handleGenCode(request: IRequest, env: Env): Promise<Respon
     return Response.json({ success: false, error: 'Missing expiry' }, { status: 400 })
   }
 
-  // Double SHA256 check
+  // SHA256 check
   const encoder = new TextEncoder()
   const firstHash = await crypto.subtle.digest('SHA-256', encoder.encode(password))
   const finalHash = Array.from(new Uint8Array(firstHash), (b) =>
@@ -120,22 +120,14 @@ export async function handleGenCode(request: IRequest, env: Env): Promise<Respon
   return Response.json({ success: true, value: token })
 }
 
-function parseCookies(header: string): Record<string, string> {
-  const result: Record<string, string> = {}
-  for (const pair of header.split(';')) {
-    const idx = pair.indexOf('=')
-    if (idx > 0) {
-      result[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim()
-    }
-  }
-  return result
-}
-
 function webloginRedirectResponse(): Response {
   const nonce = crypto.randomUUID()
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Redirecting</title><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}';"></head><body><script nonce="${nonce}">localStorage.setItem('user::isLoggedIn','true');location.href='/'</script></body></html>`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Redirecting</title></head><body><script nonce="${nonce}">localStorage.setItem('user::isLoggedIn','true');location.href='/'</script></body></html>`
   return new Response(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}';`,
+    },
   })
 }
 
