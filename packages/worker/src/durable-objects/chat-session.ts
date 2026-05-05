@@ -12,6 +12,7 @@ import {
   MessageFragmentType,
   MessageContentType,
 } from './types'
+import { generateMockResponse } from '../ai/simulator'
 
 interface SessionEntry {
   id: string
@@ -115,7 +116,7 @@ export class ChatSession extends DurableObject {
       return new Response('Chat not found', { status: 404 })
     }
 
-    this.ctx.acceptWebSocket(server)
+    server.accept()
 
     // Send history on connect
     server.send(
@@ -173,7 +174,6 @@ export class ChatSession extends DurableObject {
         )
 
         // Simulate AI response
-        const { generateMockResponse } = await import('../ai/simulator')
         const response = await generateMockResponse()
 
         // Update fragment content and status
