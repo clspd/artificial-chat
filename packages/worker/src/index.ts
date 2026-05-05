@@ -3,7 +3,6 @@ import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb } from './ha
 import { handleGetChatSessions, handleChat } from './handlers/chat'
 import { validateSession } from './services/user'
 import { ChatSession } from './durable-objects/chat-session'
-import { SCHEMA_SQL } from './db/schema'
 
 export { ChatSession }
 
@@ -11,7 +10,16 @@ let schemaInitialized = false
 
 async function ensureSchema(db: D1Database) {
   if (schemaInitialized) return
-  await db.exec(SCHEMA_SQL)
+  await db.prepare(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    salt TEXT NOT NULL,
+    password TEXT NOT NULL,
+    user_secret TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+  )`).run()
+  await db.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)').run()
   schemaInitialized = true
 }
 
