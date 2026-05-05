@@ -34,6 +34,10 @@
     </div>
 
     <div class="sidebar-footer">
+      <a-button type="text" @click="$emit('settings')">
+        <SettingOutlined />
+        {{ t('settings.title') }}
+      </a-button>
       <a-button type="text" @click="$emit('logout')" aria-label="登出账户">
         {{ t('auth.logout') }}
       </a-button>
@@ -42,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { CaretLeftFilled } from '@ant-design/icons-vue'
+import { CaretLeftFilled, SettingOutlined } from '@ant-design/icons-vue'
 import { useTranslation } from 'i18next-vue'
 
 defineProps<{
@@ -54,6 +58,7 @@ defineEmits<{
   create: []
   select: [id: string]
   collapse: []
+  settings: []
   logout: []
 }>()
 

@@ -71,6 +71,15 @@ function selectChatAndClose(chatId: string) {
   if (!isLargeScreen.value) sidebarCollapsed.value = true
 }
 
+function goSettings() {
+  router.push({ name: 'settings' })
+}
+
+function goSettingsAndClose() {
+  goSettings()
+  if (!isLargeScreen.value) sidebarCollapsed.value = true
+}
+
 async function logout() {
   try {
     await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' })
@@ -98,6 +107,7 @@ async function logout() {
           :current-chat-id="currentChatId"
           @create="createNewChat"
           @select="selectChat"
+          @settings="goSettings"
           @collapse="sidebarCollapsed = !sidebarCollapsed"
           @logout="logout"
         />
@@ -119,6 +129,7 @@ async function logout() {
           :current-chat-id="currentChatId"
           @create="createNewChat"
           @select="selectChatAndClose"
+          @settings="goSettingsAndClose"
           @collapse="sidebarCollapsed = !sidebarCollapsed"
           @logout="logout"
         />

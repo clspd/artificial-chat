@@ -94,7 +94,8 @@ import { useTranslation } from 'i18next-vue'
 
 const { t } = useTranslation()
 
-const form = reactive({ username: '', password: '', code: '' })
+const codeParam = new URLSearchParams(window.location.search).get('code')
+const form = reactive({ username: '', password: '', code: codeParam || '' })
 const errors = reactive({ username: '', password: '', code: '' })
 const loading = ref(false)
 const showResult = ref(false)

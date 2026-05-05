@@ -17,7 +17,24 @@
     "registerSuccess": "Registration successful! Redirecting to login page..."
   },
   "common": {
-    "error": "Error"
+    "error": "Error",
+    "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "Settings",
+    "userInfo": "User Info",
+    "username": "Username",
+    "source": "Source",
+    "createdAt": "Created At",
+    "changePassword": "Change Password",
+    "oldPassword": "Old Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm Password",
+    "passwordMismatch": "Passwords do not match",
+    "passwordChanged": "Password changed successfully",
+    "logoutAll": "Logout All Devices",
+    "logoutAllConfirm": "This will sign out all devices including this one. Continue?",
+    "logoutAllSuccess": "All devices signed out"
   },
   "chat": {
     "newChat": "New Chat",

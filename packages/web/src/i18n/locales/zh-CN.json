@@ -17,7 +17,24 @@
     "registerSuccess": "注册成功！即将跳转到登录页面"
   },
   "common": {
-    "error": "错误"
+    "error": "错误",
+    "cancel": "取消"
+  },
+  "settings": {
+    "title": "设置",
+    "userInfo": "用户信息",
+    "username": "用户名",
+    "source": "来源",
+    "createdAt": "创建时间",
+    "changePassword": "修改密码",
+    "oldPassword": "原密码",
+    "newPassword": "新密码",
+    "confirmPassword": "确认密码",
+    "passwordMismatch": "两次密码不一致",
+    "passwordChanged": "密码已修改",
+    "logoutAll": "登出所有设备",
+    "logoutAllConfirm": "将登出所有设备（包括当前设备），是否继续？",
+    "logoutAllSuccess": "所有设备已登出"
   },
   "chat": {
     "newChat": "新对话",

@@ -2,6 +2,7 @@ import { AutoRouter, IRequest } from 'itty-router'
 import * as cookie from 'cookie'
 import { handleWebLogin, handleWebLoginByPassword, handleAddUserWeb, handleGenCode, handleLogout } from './handlers/auth'
 import { handleGetChatSessions, handleChat } from './handlers/chat'
+import { handleGetUserInfo, handleChangePassword, handleLogoutAll } from './handlers/settings'
 import { validateSession } from './services/user'
 import { ChatSession } from './durable-objects/chat-session'
 
@@ -65,6 +66,11 @@ router.post('/api/v1/user/webLoginByPassword', handleWebLoginByPassword)
 router.post('/api/v1/user/addUserWeb', handleAddUserWeb)
 router.post('/api/v1/auth/logout', handleLogout)
 router.post('/api/v1/auth/gencode', handleGenCode)
+
+// User settings routes (auth required)
+router.get('/api/v1/user/me', authMiddleware, handleGetUserInfo)
+router.post('/api/v1/user/change-password', authMiddleware, handleChangePassword)
+router.post('/api/v1/user/logout-all', authMiddleware, handleLogoutAll)
 
 // Chat REST routes (auth required)
 router.get('/api/v1/chat/sessions', authMiddleware, handleGetChatSessions)
